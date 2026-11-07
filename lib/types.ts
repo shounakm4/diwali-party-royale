@@ -1,0 +1,113 @@
+export type Game = "bluff" | "likely";
+export type Phase =
+  "lobby" | "write" | "predict" | "vote" | "reveal" | "leaderboard" | "final";
+export type Player = {
+  id: string;
+  name: string;
+  avatar: number;
+  tokenHash: string;
+  joined: number;
+  scores: Record<Game, number>;
+};
+export type Option = {
+  id: string;
+  text: string;
+  owners: string[];
+  correct: boolean;
+};
+export type Prompt = { text: string; mode: "family" | "friends" };
+export type Settings = {
+  selfVote: boolean;
+  mode: "family" | "friends";
+  predictions: boolean;
+  prompts: Prompt[];
+};
+export type Round = {
+  id: string;
+  question: string;
+  answer?: string;
+  aliases?: string[];
+  source?: string;
+  explanation?: string;
+  eligible: string[];
+  submissions: Record<string, string>;
+  votes: Record<string, string>;
+  predictions: Record<string, string>;
+  options: Option[];
+  scored: boolean;
+  deltas: Record<string, number>;
+  note?: string;
+};
+export type Room = {
+  pin: string;
+  hostHash: string;
+  topic: string;
+  version: number;
+  created: number;
+  players: Player[];
+  phase: Phase;
+  game: Game | null;
+  index: number;
+  deck: number[];
+  round: Round | null;
+  deadline: number | null;
+  paused: boolean;
+  remaining: number;
+  settings: Settings;
+  usedTrivia: number[];
+  usedPrompts: number[];
+};
+export type Action = {
+  type: string;
+  token?: string;
+  name?: string;
+  value?: string;
+  game?: Game;
+  settings?: Settings;
+  roundId?: string;
+  version?: number;
+};
+export type View = {
+  pin: string;
+  topic: string;
+  version: number;
+  now: number;
+  players: {
+    id: string;
+    name: string;
+    avatar: number;
+    scores: Record<Game, number>;
+    total: number;
+  }[];
+  phase: Phase;
+  game: Game | null;
+  index: number;
+  count: number;
+  deadline: number | null;
+  paused: boolean;
+  me: string | null;
+  isHost: boolean;
+  settings?: Settings;
+  question?: string;
+  roundId?: string;
+  options?: { id: string; text: string; own: boolean }[];
+  submitted: boolean;
+  voted: boolean;
+  predicted: boolean;
+  progress: number;
+  eligible: boolean;
+  result?: {
+    answer?: string;
+    source?: string;
+    explanation?: string;
+    options: Option[];
+    votes?: Record<string, string>;
+    counts?: Record<string, number>;
+    predictions?: Record<string, string>;
+    deltas: Record<string, number>;
+    note?: string;
+  };
+  selfVote: boolean;
+  joinOrigin?: string;
+  backend?: string;
+};
