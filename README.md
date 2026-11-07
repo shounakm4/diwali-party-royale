@@ -2,7 +2,7 @@
 
 Two complete multiplayer party games for **2–8 friends**, with a projector host and individual phone controllers. Built with Next.js App Router, TypeScript, Tailwind CSS and Supabase Postgres + Realtime. No accounts, downloads or player sign-ins.
 
-**Test locally before deploying.** This repository has not been deployed. Cloud database policies and Realtime need a real Supabase project to verify; the local multiplayer path is ready without credentials.
+**Live:** [diwali-party-royale.vercel.app](https://diwali-party-royale.vercel.app) · [Host](https://diwali-party-royale.vercel.app/host) · [Join](https://diwali-party-royale.vercel.app/join). Deployed to Vercel with Supabase Postgres and Realtime on 7 November 2026. See `DEPLOYMENT.md` for verified checks. Local multiplayer still works without credentials.
 
 ## Play on your laptop and phones now
 
@@ -83,9 +83,9 @@ NEXT_PUBLIC_JOIN_ORIGIN=
 
 Never put the service-role key in a `NEXT_PUBLIC_` variable, source file or GitHub commit. `.env.local` and local databases are ignored by Git.
 
-## Vercel deployment — after your playtest
+## Vercel deployment — reproducing the setup
 
-This project has intentionally **not** been connected to Vercel yet.
+The production project is connected to `shounakm4/diwali-party-royale` on the `main` branch. The instructions below reproduce this setup in another Vercel project.
 
 1. Finish your local playtest and the Supabase setup above.
 2. In Vercel, choose **Add New → Project**, import `shounakm4/diwali-party-royale`, and choose the **Next.js** preset. Root directory: repository root. Build command: `npm run build`. Install command: `npm ci`. Leave output directory at its framework default.
@@ -109,7 +109,7 @@ npm run test:integration  # actual HTTP + concurrent eight-player joins/actions
 
 `TEST_URL` can target a different running app. Tests use generated test rooms, not fixtures or mock multiplayer. Unit tests inject server time to exercise deadlines without waiting 45 seconds. Integration tests run against whichever storage backend is configured.
 
-Verified during implementation: 17 engine tests, 2 HTTP integration tests, TypeScript checking, production build, Safari landing/host/player flows and refresh recovery. Supabase cloud, WebSocket delivery, physical eight-phone play and Vercel deployment remain to be verified with your configuration and devices.
+Verified: 17 engine tests, 2 local HTTP integration tests, TypeScript checking, production build, Safari landing/host/player flows and refresh recovery. After deployment, both HTTP integration tests also passed against the public HTTPS URL using real Supabase storage, including eight concurrent players and both games. Supabase Realtime delivered a committed revision event over WebSocket; anonymous direct access to `party_rooms` returned HTTP 401. The production landing page and cloud-backed host lobby were checked in Safari. Physical eight-phone play remains unverified.
 
 ## How reliability and privacy work
 
