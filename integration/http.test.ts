@@ -181,8 +181,25 @@ test("HTTP: host timers persist between rounds and a self-fulfilling prediction 
   assert.equal(denied.status, 400);
   await command("timings", { timings });
   assert.deepEqual(h.timings, timings);
+  function expectDeadline(seconds: number, earliestStart: number) {
+    assert.ok(
+      h.deadline !== null && h.deadline > h.now,
+      "phase should still be open",
+    );
+    // the transition happened between two server observations, not at response receipt.
+    assert.ok(
+      h.deadline! >= earliestStart + seconds * 1000,
+      "configured duration should be applied",
+    );
+    assert.ok(
+      h.deadline! <= h.now + seconds * 1000,
+      "deadline cannot exceed the configured duration",
+    );
+  }
+  const beforeStart = h.now;
   await command("start", { game: "likely" });
-  assert.ok(h.deadline! - h.now > 44000 && h.deadline! - h.now <= 45000);
+  expectDeadline(45, beforeStart);
+  const beforeVote = h.now;
   const rejected = await request(
     { type: "timings", version: h.version, timings },
     pin,
@@ -200,7 +217,7 @@ test("HTTP: host timers persist between rounds and a self-fulfilling prediction 
   );
   h = (await request({ type: "sync" }, pin, host)).state;
   assert.equal(h.phase, "vote");
-  assert.ok(h.deadline! - h.now > 89000 && h.deadline! - h.now <= 90000);
+  expectDeadline(90, beforeVote);
   await Promise.all(
     tokens.map((t, i) =>
       request(
@@ -225,7 +242,8 @@ test("HTTP: host timers persist between rounds and a self-fulfilling prediction 
   });
   await command("next");
   await command("timings", { timings: { ...timings, likelyPredict: 60 } });
+  const beforeNext = h.now;
   await command("next");
   assert.equal(h.phase, "predict");
-  assert.ok(h.deadline! - h.now > 59000 && h.deadline! - h.now <= 60000);
+  expectDeadline(60, beforeNext);
 });
