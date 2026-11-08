@@ -142,3 +142,90 @@ test("HTTP payload validation and origin guard", async () => {
   });
   assert.equal(huge.status, 413);
 });
+
+test("HTTP: host timers persist between rounds and a self-fulfilling prediction earns nothing", async () => {
+  const created = await request({ type: "create" });
+  assert.equal(created.status, 200, created.error);
+  const pin = created.state.pin,
+    host = created.token!;
+  let h = created.state;
+  const joined = await Promise.all(
+    Array.from({ length: 4 }, (_, i) =>
+      request({ type: "join", name: `Timer friend ${i + 1}` }, pin),
+    ),
+  );
+  for (const p of joined) assert.equal(p.status, 200, p.error);
+  const tokens = joined.map((p) => p.token!);
+  const [a, b, c] = joined.map((p) => p.state.me!);
+  h = (await request({ type: "sync" }, pin, host)).state;
+  async function command(type: string, extra = {}) {
+    const result = await request(
+      { type, version: h.version, ...extra },
+      pin,
+      host,
+    );
+    assert.equal(result.status, 200, result.error);
+    h = result.state;
+  }
+  const timings = {
+    bluffWrite: 120,
+    bluffVote: 75,
+    likelyPredict: 45,
+    likelyVote: 90,
+  };
+  const denied = await request(
+    { type: "timings", version: h.version, timings },
+    pin,
+    tokens[0],
+  );
+  assert.equal(denied.status, 400);
+  await command("timings", { timings });
+  assert.deepEqual(h.timings, timings);
+  await command("start", { game: "likely" });
+  assert.ok(h.deadline! - h.now > 44000 && h.deadline! - h.now <= 45000);
+  const rejected = await request(
+    { type: "timings", version: h.version, timings },
+    pin,
+    host,
+  );
+  assert.equal(rejected.status, 400);
+  await Promise.all(
+    tokens.map((t, i) =>
+      request(
+        { type: "predict", roundId: h.roundId, value: i === 0 ? b : "skip" },
+        pin,
+        t,
+      ),
+    ),
+  );
+  h = (await request({ type: "sync" }, pin, host)).state;
+  assert.equal(h.phase, "vote");
+  assert.ok(h.deadline! - h.now > 89000 && h.deadline! - h.now <= 90000);
+  await Promise.all(
+    tokens.map((t, i) =>
+      request(
+        { type: "vote", roundId: h.roundId, value: [b, c, b, c][i] },
+        pin,
+        t,
+      ),
+    ),
+  );
+  h = (await request({ type: "sync" }, pin, host)).state;
+  assert.equal(h.phase, "reveal");
+  assert.equal(h.players.find((p) => p.id === a)!.scores.likely, 0);
+  assert.equal(h.result!.counts![b], 2);
+  assert.equal(h.result!.counts![c], 2);
+  assert.equal("predictions" in h.result!, false);
+  assert.equal(h.result!.prediction, undefined);
+  const phone = (await request({ type: "sync" }, pin, tokens[0])).state;
+  assert.deepEqual(phone.result!.prediction, {
+    target: b,
+    leaders: [c],
+    correct: false,
+  });
+  await command("next");
+  await command("timings", { timings: { ...timings, likelyPredict: 60 } });
+  await command("next");
+  assert.equal(h.phase, "predict");
+  assert.ok(h.deadline! - h.now > 59000 && h.deadline! - h.now <= 60000);
+});

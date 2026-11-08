@@ -2,6 +2,12 @@ import { createHash, randomBytes, randomInt } from "node:crypto";
 import { trivia } from "@/data/trivia";
 import { prompts } from "@/data/prompts";
 import type { Action, Game, Option, Room, Settings, View } from "./types";
+import {
+  DEFAULT_TIMINGS,
+  roundTimings,
+  TIMING_FIELDS,
+  type Timings,
+} from "./timing";
 export const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 export const token = () => randomBytes(32).toString("hex");
 export const id = () => randomBytes(12).toString("hex");
@@ -39,6 +45,7 @@ export function makeRoom(
       predictions: true,
       prompts: [],
     },
+    timings: { ...DEFAULT_TIMINGS },
     usedTrivia: [],
     usedPrompts: [],
   };
@@ -81,6 +88,7 @@ function phase(r: Room, p: Room["phase"], seconds: number, now: number) {
   r.deadline = seconds ? now + seconds * 1000 : null;
 }
 function startRound(r: Room, now: number) {
+  const timing = roundTimings(r.timings);
   const entry = r.game === "bluff" ? trivia[r.deck[r.index]] : null;
   const prompt = r.settings.prompts.length
     ? r.settings.prompts[r.index]
@@ -103,7 +111,11 @@ function startRound(r: Room, now: number) {
   phase(
     r,
     r.game === "bluff" ? "write" : r.settings.predictions ? "predict" : "vote",
-    r.game === "bluff" ? 45 : r.settings.predictions ? 10 : 20,
+    r.game === "bluff"
+      ? timing.bluffWrite
+      : r.settings.predictions
+        ? timing.likelyPredict
+        : timing.likelyVote,
     now,
   );
 }
@@ -137,6 +149,20 @@ function buildOptions(r: Room) {
   }
   rd.options = shuffle(options);
 }
+// a player's ballot cannot change their own prediction reward.
+export function predictionLeaders(
+  votes: Record<string, string>,
+  predictor: string,
+): string[] {
+  const counts: Record<string, number> = {};
+  for (const [voter, target] of Object.entries(votes)) {
+    if (voter !== predictor) counts[target] = (counts[target] ?? 0) + 1;
+  }
+  const max = Math.max(0, ...Object.values(counts));
+  return max > 0
+    ? Object.keys(counts).filter((pid) => counts[pid] === max)
+    : [];
+}
 function reveal(r: Room, now: number) {
   const rd = r.round!;
   if (!rd.scored) {
@@ -158,14 +184,10 @@ function reveal(r: Room, now: number) {
             .forEach((owner) => add(owner, 500));
       }
     } else {
-      const counts: Record<string, number> = {};
-      Object.values(rd.votes).forEach(
-        (pid) => (counts[pid] = (counts[pid] ?? 0) + 1),
-      );
-      const max = Math.max(0, ...Object.values(counts));
-      if (max > 0)
-        for (const [pid, pred] of Object.entries(rd.predictions))
-          if (counts[pred] === max) add(pid, 300);
+      rd.predictionRule = "others";
+      for (const [pid, predicted] of Object.entries(rd.predictions)) {
+        if (predictionLeaders(rd.votes, pid).includes(predicted)) add(pid, 300);
+      }
     }
   }
   phase(r, "reveal", 0, now);
@@ -180,8 +202,9 @@ function advance(r: Room, now: number) {
       r.round!.note =
         "Not enough distinct bluffs this time. Answer revealed; no points awarded. Ready for the next one?";
       reveal(r, now);
-    } else phase(r, "vote", 25, now);
-  } else if (r.phase === "predict") phase(r, "vote", 20, now);
+    } else phase(r, "vote", roundTimings(r.timings).bluffVote, now);
+  } else if (r.phase === "predict")
+    phase(r, "vote", roundTimings(r.timings).likelyVote, now);
   else if (r.phase === "vote") reveal(r, now);
   else if (r.phase === "reveal") phase(r, "leaderboard", 0, now);
   else if (r.phase === "leaderboard") {
@@ -274,6 +297,7 @@ export function apply(
   if (
     [
       "settings",
+      "timings",
       "start",
       "next",
       "pause",
@@ -288,6 +312,25 @@ export function apply(
       a.version === r.version,
       "The room changed. Your screen is refreshing; try again.",
     );
+    if (a.type === "timings") {
+      requireThat(
+        ["lobby", "reveal", "leaderboard", "final"].includes(r.phase),
+        "Change timers before the match or between rounds.",
+      );
+      requireThat(
+        a.timings &&
+          TIMING_FIELDS.every(
+            ({ key }) =>
+              Number.isInteger(a.timings![key]) &&
+              a.timings![key] >= 5 &&
+              a.timings![key] <= 300,
+          ),
+        "Each timer must be a whole number from 5 to 300 seconds.",
+      );
+      r.timings = Object.fromEntries(
+        TIMING_FIELDS.map(({ key }) => [key, a.timings![key]]),
+      ) as Timings;
+    }
     if (a.type === "settings") {
       requireThat(r.phase === "lobby", "Change settings in the lobby.");
       validateSettings(a.settings!);
@@ -451,6 +494,7 @@ export function view(r: Room, t: string, now = Date.now()): View {
     me: me?.id ?? null,
     isHost: host,
     settings: host ? r.settings : undefined,
+    timings: roundTimings(r.timings),
     question: rd?.question,
     roundId: rd?.id,
     options:
@@ -477,9 +521,29 @@ export function view(r: Room, t: string, now = Date.now()): View {
             options: rd.options,
             votes: r.game === "bluff" ? rd.votes : undefined,
             counts: r.game === "likely" ? counts : undefined,
-            predictions: r.game === "likely" ? rd.predictions : undefined,
+            prediction:
+              r.game === "likely" &&
+              rd.scored &&
+              rd.predictionRule === "others" &&
+              me &&
+              rd.predictions[me.id] &&
+              rd.predictions[me.id] !== "skip"
+                ? {
+                    target: rd.predictions[me.id],
+                    leaders: predictionLeaders(rd.votes, me.id),
+                    correct: predictionLeaders(rd.votes, me.id).includes(
+                      rd.predictions[me.id],
+                    ),
+                  }
+                : undefined,
             deltas: rd.deltas,
-            note: rd.note,
+            note:
+              rd.note ??
+              (r.game === "likely" &&
+              rd.scored &&
+              rd.predictionRule !== "others"
+                ? "This round used the earlier prediction rule. Earned scores are kept; future rounds use only the other players’ votes."
+                : undefined),
           }
         : undefined,
   };

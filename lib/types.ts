@@ -1,3 +1,4 @@
+import type { Timings } from "./timing";
 export type Game = "bluff" | "likely";
 export type Phase =
   "lobby" | "write" | "predict" | "vote" | "reveal" | "leaderboard" | "final";
@@ -35,6 +36,7 @@ export type Round = {
   predictions: Record<string, string>;
   options: Option[];
   scored: boolean;
+  predictionRule?: "others";
   deltas: Record<string, number>;
   note?: string;
 };
@@ -54,6 +56,7 @@ export type Room = {
   paused: boolean;
   remaining: number;
   settings: Settings;
+  timings?: Timings;
   usedTrivia: number[];
   usedPrompts: number[];
 };
@@ -64,6 +67,7 @@ export type Action = {
   value?: string;
   game?: Game;
   settings?: Settings;
+  timings?: Timings;
   roundId?: string;
   version?: number;
 };
@@ -88,6 +92,7 @@ export type View = {
   me: string | null;
   isHost: boolean;
   settings?: Settings;
+  timings: Timings;
   question?: string;
   roundId?: string;
   options?: { id: string; text: string; own: boolean }[];
@@ -103,7 +108,7 @@ export type View = {
     options: Option[];
     votes?: Record<string, string>;
     counts?: Record<string, number>;
-    predictions?: Record<string, string>;
+    prediction?: { target: string; leaders: string[]; correct: boolean };
     deltas: Record<string, number>;
     note?: string;
   };

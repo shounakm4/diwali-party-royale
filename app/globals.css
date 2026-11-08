@@ -2008,3 +2008,71 @@ h1 {
     scroll-behavior: auto !important;
   }
 }
+.timer-settings {
+  max-width: 1100px;
+  margin: 28px auto;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #ffffff03;
+  text-align: left;
+}
+.timer-settings summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+}
+.timer-settings summary span {
+  color: var(--gold);
+  font-size: 11px;
+}
+.timer-settings p {
+  font-size: 12px;
+  margin: 18px 0;
+}
+.timer-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin: 20px 0;
+}
+.timer-fields label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.timer-fields label > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.timer-fields input {
+  max-width: 140px;
+  font-size: 20px;
+}
+.timer-fields span {
+  font-size: 11px;
+}
+.timer-saved {
+  color: var(--green);
+  font-size: 12px;
+  margin-left: 14px;
+}
+.prediction-outcome {
+  padding: 16px;
+  border: 1px solid #bde7ce33;
+  background: #bde7ce09;
+  border-radius: 12px;
+}
+@media (max-width: 700px) {
+  .timer-fields {
+    grid-template-columns: 1fr;
+  }
+  .timer-saved {
+    display: block;
+    margin: 12px 0 0;
+  }
+}

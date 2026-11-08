@@ -20,6 +20,7 @@ import {
   Settings2,
 } from "lucide-react";
 import type { Action, Game, Settings, View } from "@/lib/types";
+import { TIMING_FIELDS, type Timings } from "@/lib/timing";
 import { prompts } from "@/data/prompts";
 import { Decor, Diya } from "./Decor";
 const avatars = ["😎", "🦊", "👽", "🐯", "🦄", "🐸", "🐼", "🤖"];
@@ -592,8 +593,8 @@ export default function Party({ host }: { host: boolean }) {
               {state.phase === "predict" && (
                 <>
                   <p className="stage-subtitle">
-                    Who will get the most votes? Call it correctly for +300.
-                    This is your secret prediction.
+                    Predict who the other players will choose for +300. Your own
+                    vote never counts toward your prediction score.
                   </p>
                   {!host &&
                     (state.predicted ? (
@@ -750,6 +751,9 @@ export default function Party({ host }: { host: boolean }) {
                           ? "Consider this your honorary title. Wear it with pride."
                           : "No votes this time. Your secrets are safe."}
                       </p>
+                      {state.result.note && (
+                        <p className="notice">{state.result.note}</p>
+                      )}
                       <div className="vote-bars">
                         {[...state.players]
                           .sort(
@@ -776,10 +780,21 @@ export default function Party({ host }: { host: boolean }) {
                           ))}
                       </div>
                       <p className="subtle">
-                        Individual votes stay anonymous. Tied leaders all count
-                        for predictions.
+                        Bars include everyone’s votes. Prediction scores count
+                        only the other players’ votes; ties among those votes
+                        count too. Individual votes and predictions stay
+                        private.
                       </p>
                     </>
+                  )}
+                  {!host && state.result.prediction && (
+                    <p className="prediction-outcome">
+                      You predicted{" "}
+                      {player(state.result.prediction.target)?.name}.{" "}
+                      {state.result.prediction.leaders.length
+                        ? `The other players’ top pick${state.result.prediction.leaders.length > 1 ? "s were" : " was"} ${state.result.prediction.leaders.map((pid) => player(pid)?.name).join(" & ")}. ${state.result.prediction.correct ? "+300 — good call!" : "No prediction points this round."}`
+                        : "No other players voted, so no prediction points this round."}
+                    </p>
                   )}
                   {!host && (
                     <div className="points-award">
@@ -959,6 +974,16 @@ export default function Party({ host }: { host: boolean }) {
                 )}
             </section>
           )}
+          {host &&
+            ["lobby", "reveal", "leaderboard", "final"].includes(
+              state.phase,
+            ) && (
+              <TimerEditor
+                timings={state.timings}
+                busy={busy}
+                save={(timings) => act({ type: "timings", timings })}
+              />
+            )}
           <details className="rules">
             <summary>How the points work</summary>
             <p>
@@ -969,9 +994,10 @@ export default function Party({ host }: { host: boolean }) {
             </p>
             <p>
               <strong>Most Likely To:</strong> +300 for predicting any tied
-              top-voted player. Receiving votes earns no points. Predictions are
-              optional. Scores carry between matches and both games. Restart
-              keeps points; create a new party to reset.
+              top-voted player among the other players’ votes. Your own ballot
+              is excluded from your prediction score. Receiving votes earns no
+              points. Predictions are optional. Scores carry between matches and
+              both games. Restart keeps points; create a new party to reset.
             </p>
           </details>
         </>
@@ -1225,6 +1251,102 @@ function PromptEditor({
       >
         Save game settings <Check size={17} />
       </button>
+    </details>
+  );
+}
+
+function TimerEditor({
+  timings,
+  busy,
+  save,
+}: {
+  timings: Timings;
+  busy: boolean;
+  save: (value: Timings) => Promise<boolean | undefined>;
+}) {
+  const asInputs = (value: Timings) =>
+    Object.fromEntries(
+      TIMING_FIELDS.map(({ key }) => [key, String(value[key])]),
+    ) as Record<keyof Timings, string>;
+  const [draft, setDraft] = useState(() => asInputs(timings));
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    setDraft(asInputs(timings));
+  }, [
+    timings.bluffWrite,
+    timings.bluffVote,
+    timings.likelyPredict,
+    timings.likelyVote,
+  ]);
+  const dirty = TIMING_FIELDS.some(
+    ({ key }) => draft[key] !== String(timings[key]),
+  );
+  const valid = TIMING_FIELDS.every(
+    ({ key }) =>
+      draft[key].trim() !== "" &&
+      Number.isInteger(Number(draft[key])) &&
+      Number(draft[key]) >= 5 &&
+      Number(draft[key]) <= 300,
+  );
+  return (
+    <details className="timer-settings">
+      <summary>
+        <Settings2 size={18} /> Round timers{" "}
+        <span>
+          {dirty ? "· unsaved" : saved ? "· saved" : "· host controls"}
+        </span>
+      </summary>
+      <p>
+        Choose 5–300 seconds for each phase. Save before starting the match or
+        the next round. Everyone finishing early still closes the phase
+        automatically.
+      </p>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (
+            valid &&
+            (await save(
+              Object.fromEntries(
+                TIMING_FIELDS.map(({ key }) => [key, Number(draft[key])]),
+              ) as Timings,
+            ))
+          )
+            setSaved(true);
+        }}
+      >
+        <div className="timer-fields">
+          {TIMING_FIELDS.map(({ key, label }) => (
+            <label key={key}>
+              {label}
+              <div>
+                <input
+                  aria-label={label + " seconds"}
+                  type="number"
+                  min={5}
+                  max={300}
+                  step={1}
+                  required
+                  value={draft[key]}
+                  onChange={(e) => {
+                    setDraft({ ...draft, [key]: e.target.value });
+                    setSaved(false);
+                  }}
+                />
+                <span>seconds</span>
+              </div>
+            </label>
+          ))}
+        </div>
+        <button className="button primary" disabled={busy || !dirty || !valid}>
+          Save round timers <Check size={17} />
+        </button>
+        {saved && !dirty && (
+          <span className="timer-saved" role="status">
+            Saved for upcoming rounds.
+          </span>
+        )}
+      </form>
     </details>
   );
 }

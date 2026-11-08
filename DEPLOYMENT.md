@@ -30,3 +30,11 @@ The three Supabase environment variables are configured in Vercel for Production
 The current deployment uses existing legacy anon/service_role keys for compatibility with the original setup instructions. Supabase displayed an early-2027 legacy-key retirement notice: migrate these environment values to the project's publishable/secret keys before that retirement, redeploy, and rerun the HTTP and Realtime checks. Do not disable existing keys before the replacement is verified.
 
 Pushes to `main` trigger Vercel builds. Room state is in Supabase, so deployments do not discard party scores. Create a new party for new sessions; room access expires after 48 hours. Cleanup is manual as documented in the SQL migration.
+
+## 8 November 2026: prediction fairness and timer controls
+
+- Social prediction bonuses are evaluated against only the other players’ ballots. A player cannot change their own prediction reward by voting for their prediction. Ties among the remaining ballots count, and zero remaining ballots means zero bonus.
+- Individual predictions remain private after reveal; each player receives only their own prediction outcome. Aggregate bars still include all ballots.
+- Hosts can set four timers independently, from 5 to 300 seconds, in the lobby or between rounds. Defaults are 60 seconds for bluff writing, 45 for bluff voting, 20 for prediction, and 45 for social voting. Active countdowns remain fixed.
+- Legacy rooms use default timers when missing settings. Already-awarded scores are kept, with a note on results scored under the earlier rule. No schema migration is needed.
+- Regression coverage now includes 25 engine tests and 3 HTTP integration tests, including the former self-fulfilling prediction exploit, own-vote independence, ties, timer validation, authorization, and legacy room recovery.

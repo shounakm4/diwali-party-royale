@@ -37,7 +37,7 @@ Refresh restores the saved host/player identity in the same browser and origin. 
 
 ### Bluff Masters — five rounds
 
-- 45 seconds to write a fake answer, then 25 seconds to choose the truth.
+- Default: 60 seconds to write a fake answer, then 45 seconds to choose the truth.
 - +1,000 for choosing the truth; +500 per opponent fooled by your fake answer.
 - Authors cannot vote for their own fake answer, including shared duplicate cards.
 - Exact and close spelling variants are grouped. Submissions containing a canonical truth or alias as a whole phrase are excluded from fake cards. Matching the correct answer or one of its aliases merges into the truth without fake-answer credit. Similar fake answers share a card; every author gets +500 for each opponent fooled.
@@ -46,13 +46,20 @@ Refresh restores the saved host/player identity in the same browser and origin. 
 
 ### Who’s Most Likely To? — eight rounds
 
-- An optional 10-second secret prediction phase comes **before** the 20-second anonymous voting phase. Skip a prediction if you like.
-- +300 for predicting any player tied for the most votes; zero points for receiving votes. A round with no votes awards zero points.
+- By default, an optional 20-second secret prediction phase comes **before** the 45-second anonymous voting phase. Skip a prediction if you like.
+- +300 for predicting a player tied for the most votes **among the other players’ ballots**. Your own vote is excluded from your prediction score, so it cannot make your prediction come true. Receiving votes earns zero points. If nobody else votes, your prediction earns zero points.
+- The result bars still show all votes. Your phone explains the outcome using only the other players’ votes; individual predictions stay private, including after the reveal.
 - Self-votes are disabled by default; the host can enable them. Self-predictions are allowed.
 - **Family Friendly** draws only family prompts. **Friends Unfiltered** draws from the entire bank, including cheeky, non-explicit prompts.
 - A host can load a starter playlist, add/edit/remove/reorder it and save exactly eight custom prompts, or leave it empty for a random selection. Custom prompts are tagged with the selected mode. Remove any Friends prompts before saving in Family mode.
 
 Party totals and per-game scores persist between both games and between matches. Either game can be played alone or first. Restart uses new rounds where possible and keeps scores. Ties share a rank; join order decides the display order within a tie. The final podium shows the top three seats and their shared ranks.
+
+## Host-controlled round timers
+
+Open **Round timers** in the host lobby, or on a reveal/leaderboard between rounds. Set each phase independently (5–300 whole seconds): Bluff Masters writing and voting, and Most Likely To prediction and voting. Click **Save round timers** before starting the match or next round. Values stay in the room until changed and affect future rounds; active countdowns cannot be edited. Phases still end early when everyone finishes.
+
+Older rooms without timer settings use the defaults above without changing an active deadline. Already awarded points are preserved; old scored social rounds carry a note that they used the earlier rule.
 
 ## Customize the banks
 
@@ -107,9 +114,9 @@ npm start                # in a separate terminal; do not run on a port used by 
 npm run test:integration  # actual HTTP + concurrent eight-player joins/actions
 ```
 
-`TEST_URL` can target a different running app. Tests use generated test rooms, not fixtures or mock multiplayer. Unit tests inject server time to exercise deadlines without waiting 45 seconds. Integration tests run against whichever storage backend is configured.
+`TEST_URL` can target a different running app. Tests use generated test rooms, not fixtures or mock multiplayer. Unit tests inject server time to exercise deadlines without waiting for real countdowns. Integration tests run against whichever storage backend is configured.
 
-Verified: 17 engine tests, 2 local HTTP integration tests, TypeScript checking, production build, Safari landing/host/player flows and refresh recovery. After deployment, both HTTP integration tests also passed against the public HTTPS URL using real Supabase storage, including eight concurrent players and both games. Supabase Realtime delivered a committed revision event over WebSocket; anonymous direct access to `party_rooms` returned HTTP 401. The production landing page and cloud-backed host lobby were checked in Safari. Physical eight-phone play remains unverified.
+Verified: 25 engine tests, 3 local HTTP integration tests, TypeScript checking, production build, Safari landing/host/player flows and refresh recovery. After deployment, the HTTP integration suite also passed against the public HTTPS URL using real Supabase storage, including eight concurrent players and both games. Supabase Realtime delivered a committed revision event over WebSocket; anonymous direct access to `party_rooms` returned HTTP 401. The production landing page and cloud-backed host lobby were checked in Safari. Physical eight-phone play remains unverified.
 
 ## How reliability and privacy work
 

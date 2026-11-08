@@ -1,6 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { apply, makeRoom, view, hash, similar, normalize } from "../lib/engine";
+import {
+  apply,
+  makeRoom,
+  view,
+  hash,
+  similar,
+  normalize,
+  predictionLeaders,
+} from "../lib/engine";
 import { trivia } from "../data/trivia";
 import { prompts } from "../data/prompts";
 import type { Action, Room, Game } from "../lib/types";
@@ -174,7 +182,7 @@ test("deadlines reject late actions, fallback handles 0 or 1 submissions", () =>
 test("paused deadlines freeze; resume preserves remaining time", () => {
   const { r, host, tokens } = start("bluff");
   command(r, host, "pause", {}, 10000);
-  assert.equal(r.remaining, 36000);
+  assert.equal(r.remaining, 51000);
   apply(r, { type: "sync", token: tokens[0] }, 100000);
   assert.equal(r.phase, "write");
   assert.throws(
@@ -182,7 +190,7 @@ test("paused deadlines freeze; resume preserves remaining time", () => {
     /paused/,
   );
   command(r, host, "resume", {}, 100000);
-  assert.equal(r.deadline, 136000);
+  assert.equal(r.deadline, 151000);
 });
 test("self-vote toggle is validated on server and reflected in phone view", () => {
   const { r, host, tokens } = start("likely", 2);
@@ -266,4 +274,165 @@ test("truth-containing phrases cannot be presented as somebody’s fake answer",
   command(r, host, "next");
   assert.equal(r.round!.options.filter((o) => o.correct).length, 1);
   assert.ok(r.round!.options.every((o) => !o.owners.includes(r.players[0].id)));
+});
+
+test("your vote cannot turn a wrong prediction into a scoring tie", () => {
+  const { r, tokens, host } = start("likely", 4);
+  const [a, b, c, d] = r.players.map((p) => p.id);
+  tokens.forEach((t, i) => action(r, t, "predict", i === 0 ? b : "skip"));
+  action(r, tokens[0], "vote", b);
+  action(r, tokens[1], "vote", c);
+  action(r, tokens[2], "vote", b);
+  action(r, tokens[3], "vote", c);
+  assert.equal(r.phase, "reveal");
+  assert.equal(r.players[0].scores.likely, 0);
+  assert.deepEqual(predictionLeaders(r.round!.votes, a), [c]);
+  const phone = view(r, tokens[0]);
+  assert.equal(phone.result!.counts![b], 2);
+  assert.equal(phone.result!.counts![c], 2);
+  assert.deepEqual(phone.result!.prediction, {
+    target: b,
+    leaders: [c],
+    correct: false,
+  });
+  assert.equal("predictions" in phone.result!, false);
+  assert.equal(view(r, host).result!.prediction, undefined);
+  assert.equal(view(r, tokens[1]).result!.prediction, undefined);
+});
+
+test("prediction leaders and reward eligibility do not depend on your own ballot", () => {
+  const others = { b: "c", c: "b", d: "c" };
+  for (const own of ["a", "b", "c", "d"]) {
+    assert.deepEqual(predictionLeaders({ ...others, a: own }, "a"), ["c"]);
+  }
+  assert.deepEqual(predictionLeaders({ a: "b" }, "a"), []);
+  assert.deepEqual(predictionLeaders({ a: "b", b: "b", c: "c" }, "a"), [
+    "b",
+    "c",
+  ]);
+});
+
+test("a tie among the other voters counts even if your ballot breaks the overall tie", () => {
+  const { r, tokens } = start("likely", 3);
+  const [a, b, c] = r.players.map((p) => p.id);
+  tokens.forEach((t, i) => action(r, t, "predict", i === 0 ? c : "skip"));
+  action(r, tokens[0], "vote", b);
+  action(r, tokens[1], "vote", c);
+  action(r, tokens[2], "vote", b);
+  assert.equal(r.players[0].scores.likely, 300);
+  assert.deepEqual(predictionLeaders(r.round!.votes, a).sort(), [b, c].sort());
+});
+
+test("a lone voter cannot award their own prediction bonus", () => {
+  const { r, tokens, host } = start("likely", 3);
+  tokens.forEach((t, i) =>
+    action(r, t, "predict", i === 0 ? r.players[1].id : "skip"),
+  );
+  action(r, tokens[0], "vote", r.players[1].id);
+  command(r, host, "next");
+  assert.equal(r.players[0].scores.likely, 0);
+  assert.deepEqual(view(r, tokens[0]).result!.prediction!.leaders, []);
+});
+
+test("host timers control every phase in both games and can change between rounds", () => {
+  const { r, tokens, host } = party(2);
+  const timings = {
+    bluffWrite: 120,
+    bluffVote: 75,
+    likelyPredict: 30,
+    likelyVote: 90,
+  };
+  command(r, host, "timings", { timings });
+  command(r, host, "start", { game: "bluff" });
+  assert.equal(r.deadline, 121000);
+  assert.throws(
+    () => command(r, host, "timings", { timings }),
+    /between rounds/,
+  );
+  tokens.forEach((t, i) =>
+    action(
+      r,
+      t,
+      "submit",
+      i ? "Blue clockwork cats" : "Golden spinning bicycles",
+      2000,
+    ),
+  );
+  assert.equal(r.phase, "vote");
+  assert.equal(r.deadline, 77000);
+  command(r, host, "next", {}, 3000);
+  command(r, host, "timings", { timings: { ...timings, bluffWrite: 150 } });
+  command(r, host, "next");
+  command(r, host, "next", {}, 4000);
+  assert.equal(r.phase, "write");
+  assert.equal(r.deadline, 154000);
+  command(r, host, "lobby");
+  command(r, host, "start", { game: "likely" });
+  assert.equal(r.deadline, 31000);
+  tokens.forEach((t) => action(r, t, "predict", "skip", 2000));
+  assert.equal(r.deadline, 92000);
+});
+
+test("timers are host-only and reject missing, non-integer or out-of-range values", () => {
+  const { r, host, tokens } = party(2);
+  const timings = {
+    bluffWrite: 60,
+    bluffVote: 45,
+    likelyPredict: 20,
+    likelyVote: 45,
+  };
+  assert.throws(() => command(r, tokens[0], "timings", { timings }), /host/);
+  for (const value of [0, 4, 301, 5.5, NaN, Infinity, "60", null, undefined]) {
+    const invalid = {
+      ...timings,
+      bluffWrite: value,
+    } as unknown as typeof timings;
+    assert.throws(
+      () => command(r, host, "timings", { timings: invalid }),
+      /whole number/,
+    );
+  }
+  assert.throws(() => command(r, host, "timings"), /whole number/);
+  command(r, host, "timings", {
+    timings: { ...timings, bluffWrite: 5, likelyVote: 300 },
+  });
+  assert.equal(r.timings!.bluffWrite, 5);
+  assert.equal(r.timings!.likelyVote, 300);
+});
+
+test("old rooms without timer settings recover with defaults without changing an active deadline", () => {
+  const { r, host, tokens } = start("bluff", 2);
+  delete r.timings;
+  r.deadline = 46000;
+  apply(r, { type: "sync", token: host }, 2000);
+  assert.equal(r.deadline, 46000);
+  assert.equal(view(r, host).timings.likelyVote, 45);
+  tokens.forEach((t, i) =>
+    action(
+      r,
+      t,
+      "submit",
+      i ? "Brass clockwork birds" : "Plastic dancing lobsters",
+      3000,
+    ),
+  );
+  assert.equal(r.deadline, 48000);
+});
+
+test("already-scored legacy rounds retain their scores without presenting a new-rule outcome", () => {
+  const { r, tokens } = start("likely", 3);
+  tokens.forEach((t, i) =>
+    action(r, t, "predict", i === 0 ? r.players[1].id : "skip"),
+  );
+  tokens.forEach((t, i) => action(r, t, "vote", r.players[(i + 1) % 3].id));
+  delete r.round!.predictionRule;
+  const scores = r.players.map((p) => p.scores.likely);
+  const result = view(r, tokens[0]).result!;
+  assert.equal(result.prediction, undefined);
+  assert.match(result.note!, /earlier prediction rule/);
+  apply(r, { type: "sync", token: tokens[0] }, 2000);
+  assert.deepEqual(
+    r.players.map((p) => p.scores.likely),
+    scores,
+  );
 });
